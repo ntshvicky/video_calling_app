@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.0/simplepeer.min.js"></script>
+
+    <title>Chat Rooms</title>
+    <style>
+        /* Basic styling for the form and messages */
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div>
+    <input type="text" id="username" placeholder="Enter your username">
+    <input type="text" id="room" placeholder="Enter room id">
+    <button onclick="joinRoom()">Join Room</button>
+    <button onclick="createRoom()">Create Room</button>
+    <button onclick="leaveRoom()">Leave Room</button>
+</div>
+<br/>
+<div id="messages"></div>
+
+<!-- Add after the messages div -->
+<div id="videoContainer">
+    <video id="localVideo" autoplay muted  style="border: solid 1px #000; max-height: 220px;"></video>
+</div>
+
+
+<script>
+    const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+    const messagesDiv = document.getElementById('messages');
+
+    let peers = {};
+    let localStream;
+
+    function createPeer(userId, initiator) {
+        const peer = new SimplePeer({
+            initiator: initiator,
+            stream: localStream,
+        });
+
+        peer.on('signal', function(data) {
+            socket.emit('signal', {
+                userId: userId,
+                room_id: document.getElementById('room').value,
+                signal: data
+            });
+        });
+
+        peer.on('stream', function(remoteStream) {
+
+            console.log("remoteStream", remoteStream)
+            
+            // Check if the video element for this user already exists
+            let video = document.getElementById(`video_${userId}`);
+            if (!video) {
+                video = document.createElement('video');
+                video.setAttribute('id', `video_${userId}`);
+                document.getElementById('videoContainer').appendChild(video);
+            }
+    
+            video.setAttribute('autoplay', 'true');
+            video.setAttribute('data-username', userId);  // Add this line
+            video.srcObject = remoteStream;
+            document.getElementById('videoContainer').appendChild(video);
+        });
+
+        peer.on('error', function(err) {
+            console.error('Peer connection error:', err);
+        });
+
+        return peer;
+    }
+
+    
+    socket.on('user_joined', function(data) {
+        
+        // If the user joining is the current user, initiate the signaling process with other users
+        console.log('User joined', data, socket.id);
+
+        if (data.userId !== socket.id) {
+            peers[data.userId] = createPeer(data.userId, true);
+        } else {
+            console.log("userId 2.", data.userId)
+            // This part is for existing users to create a new peer connection for the new user
+            peers[data.username] = createPeer(data.username, true);
+        }
+
+        messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has joined the room.</p>`;
+    });
+
+    socket.on('user_left', function(data) {
+        const userId = data.username;
+
+        // Destroy the peer connection
+        if (peers[userId]) {
+            peers[userId].destroy();
+            delete peers[userId];
+        }
+
+        // Remove the video element for this user
+        const videoElem = document.getElementById(`video_${data.userId}`);
+        if (videoElem) {
+            videoElem.remove();
+        }
+        messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has left the room.</p>`;
+    });
+
+    socket.on('signal', function(data) {
+        console.log("Received Signal: ", data);
+        const userId = data.userId;
+
+        // Avoid signaling oneself
+        if (userId === socket.id) {
+            return;
+        }
+        
+        // Create a new peer only if it doesn't exist and an offer is received
+        if (!peers[userId] && data.signal.type === 'offer') {
+            console.log("Creating new peer for offer", userId);
+            peers[userId] = createPeer(userId, false);
+        }
+
+        // Signal the peer if it exists and is not destroyed
+        if (peers[userId] && !peers[userId].destroyed) {
+            console.log("Signaling peer", userId);
+            peers[userId].signal(data.signal);
+        }
+    });
+
+    function joinRoom() {
+        const username = document.getElementById('username').value;
+        const room = document.getElementById('room').value;
+        socket.emit('join', {username: username, room_id: room});
+
+        navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        }).then(stream => {
+            localStream = stream;
+            document.getElementById('localVideo').srcObject = localStream;
+            messagesDiv.innerHTML += `<p>You joined room: ${room}</p>`;
+        }).catch(err => {
+            console.error(err);
+            messagesDiv.innerHTML += `<p>is facing error while joining room: ${room}</p>`;
+        });
+    }
+
+    function createRoom() {
+        const room = document.getElementById('room').value;
+        fetch('/create_room', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ room_id: room })
+        }).then(response => {
+            if(response.ok) {
+                messagesDiv.innerHTML += `<p>Room ${room} created successfully.</p>`;
+            } else {
+                messagesDiv.innerHTML += `<p>Error creating room. Maybe it already exists.</p>`;
+            }
+        });
+    }
+
+    function leaveRoom() {
+        const username = document.getElementById('username').value;
+        const room = document.getElementById('room').value;
+        socket.emit('leave', {username: username, room_id: room});
+        messagesDiv.innerHTML += `<p>You left room: ${room}</p>`;
+    }
+</script>
+
+</body>
+</html>
