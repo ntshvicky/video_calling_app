@@ -84,7 +84,7 @@
             success: function(response) {
                 console.log('AJAX response:', response);
                 if(response['success'] == true) {
-                    messagesDiv.innerHTML = `<p><a href='${url}/room_join/${response.room_id}' target='_blank'>${url}/join/${response.room_id}</a></p>`; 
+                    messagesDiv.innerHTML = `<p><a href='${url}/room_join/${response.room_id}' target='_blank'>${url}/room_join/${response.room_id}</a></p>`; 
                 } else {
                     messagesDiv.innerHTML = `<p>Error creating meeting link.</p>`;
                 }
