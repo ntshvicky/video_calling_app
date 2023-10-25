@@ -91,7 +91,7 @@
             method: 'POST', // or 'GET' depending on your route
             contentType: 'application/json',
             dataType: 'json',
-            data : JSON.stringify({creator: creator}),
+            data : JSON.stringify({creator: creator.trim()}),
             success: function(response) {
                 console.log('AJAX response:', response);
                 if(response['success'] == true) {
