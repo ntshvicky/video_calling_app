@@ -7,8 +7,12 @@ The code releted files are in p2p.py backend and p2p.html frontend in template d
 
 2. Normal multiple people meeting video call
 => run code using python3 m2m.py 
-The code releted files are in m2m.py backend and m2m.html frontend in template directory
+The code releted files are in m2m.py backend and m2m_1.html & m2m_2.html frontend in template directory
 
+
+3. Approval based multiple people meeting video call
+=> run code using python3 a2a.py 
+The code releted files are in a2a.py backend and a2a_1.html & a2a_2.html frontend in template directory
 
 ## How to setup
 step 1.  create python virtual environment
@@ -35,6 +39,12 @@ In main page first create a meeeting link and you can click and open meeeting li
 It will open meeting in another tab , Enter your username for meeting and Join.. 
 Based on each user internet speed and your system bandwidth and speed it may take some time to show videos of other users.
 
+
+3. a2a.py is same as m2m.py based code just it will ask creator approval to join another users in meeting.
+- as a creator use same username on meeting join as you have used at meeting creation time
+
+
+## You can modify your code better by creating user login and while managing user unique id on username
+
 ## Issue
 Due to asynchronous code execution for other participant to in socket join. there is a loop. emit will not execute. i have added more time so it should execute well, but still if you will face issue increase time. Problem is actually i faced sometimes, If new user join meeting can see existing users but existing users cant see new added users. If you will face the issue that cant see new users. Just reconnect the meeting. This issue should not happen because i have tried to solve the issue. If you can find better solution please share me. You can write asynchronous code also for better performance. I am little bad in asynchronously code bcz of corontine error message in every small code part. 
-
