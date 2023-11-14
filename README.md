@@ -62,7 +62,7 @@ Due to asynchronous code execution for other participant to in socket join. ther
 
 
 ## push in git
-find . | grep -E "(__pycache__|\.pyc|\.pyo$)" | xargs rm -rf   
+find . | grep -E "(__pycache__|\.pyc|\.pyo$)" | xargs rm -rf
 git add .
 git commit -m "okay"
 git push origin master
