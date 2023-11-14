@@ -52,7 +52,7 @@ Based on each user internet speed and your system bandwidth and speed it may tak
 
 4. x2x.py is same as x3x.py , just x3x has approval to join option. 
 - as a creator use same username on meeting join as you have used at meeting creation time
-- sometimes there is an issue when new users are not showing to previous users at meeting, due to some conflict on room joining by new users
+- in x3x sometimes there is an issue when new users are not showing to previous users at meeting, due to some conflict on room joining by new users
 
 
 ## You can modify your code better by creating user login and while managing user unique id on username
