@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.0/simplepeer.min.js"></script>
+
+    <title>Video Chat Room</title>
+    <style>
+        .container {
+            margin-bottom: 20px;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        video {
+            width: 240px;
+            height: 180px;
+            text-align: left;
+        }
+
+.screenShareVideo {
+    width: 100%;
+    height: 100%;
+    text-align: center;
+}
+
+#screenShareContainer {
+    width: 100%;
+    height: 100%;
+    text-align: center;
+}
+
+.video-button-container {
+        position: relative;
+    }
+
+    .maximize-button {
+        width: 100%;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+    }
+    </style>
+</head>
+<body>
+
+    <div>
+        <div class="container-fluid p-3 bg-primary text-white text-center">
+            <h1>Welcome to Meeting ID : {{room_id}}</h1>
+            <p>Respect the others and kindly mute your audio if not talking!</p> 
+        </div>
+    
+        <div class="container mt-5 text-center"  id="usernameBox">
+            <div class="form-group row">
+                <div class="col-sm-4"></div>
+                <div class="col-sm-4">
+                    <div class="container mt-3">
+                        <p>Enter your username:</p>
+                        <div class="form-floating mb-3 mt-3">
+                            <input type="text" class="form-control" id="meeting_username" placeholder="Enter meeting username" name="meeting_username">
+                            <label for="meeting_username">Username</label>
+                        </div>
+                        <p>(Note: If you are a creator it will take a minute to verify and auto let you join)</p>
+                        <button type="submit" class="btn btn-primary" id="joinBtn" onclick="joinRoom()">Join</button>
+                      </div>
+                </div>
+                <div class="col-sm-4"></div>
+            </div>
+        </div>
+    
+        <div class="container mt-5" id="roomBox">
+            <div class="container mt-3">
+                <div class="form-group row text-center">
+                    <div class="col-sm-12">
+                        <div class="form-group row text-center">
+                            <div class="col-sm-3">
+                                <button id="toggleVideo" class="btn btn-primary btn-large">Disable Video</button>
+                            </div>
+                            <div class="col-sm-3">
+                                <button id="toggleAudio" class="btn btn-primary btn-large">Mute Audio</button>
+                            </div>
+                            <div class="col-sm-3">
+                                <button id="leaveRoom" class="btn btn-danger btn-large">Leave Room</button>
+                            </div>
+                            <div class="col-sm-3">
+                                <button id="shareScreenBtn" class="btn btn-primary">Share Screen</button>
+                                <button id="stopShareScreenBtn" class="btn btn-secondary" style="display:none;">Stop Sharing</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+    
+                <hr/>
+                <div class="form-group row text-center" id="roomBox">
+                    <div class="col-sm-6" style="border: solid 2px #000;">
+                        <div id="videoContainer">
+                            <video id="localVideo" autoplay muted></video>
+                        </div>
+                    </div>
+                    <div class="col-sm-4" style="border: solid 2px #000;">
+                        <div id="screenShareContainer"></div>
+                    </div>
+                    <div class="col-sm-2" style="border: solid 2px #000;">
+                        <div id="messages"></div>
+                        <input type="text" id="messageInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
+                            <button onclick="postMessage()">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+<script>
+
+    const url = location.protocol + '//' + document.domain;
+    const socket = io.connect(url + ':' + location.port);
+    const messagesDiv = document.getElementById('messages');
+
+    let peers = {};
+    let localStream;
+    let userName;
+
+    let videoEnabled = true;  // To keep track of the video state
+    let audioEnabled = true;
+
+    document.getElementById('usernameBox').style.display = 'block';
+    document.getElementById('roomBox').style.display = 'none';
+
+    function createPeer(userId, initiator) {
+        const peer = new SimplePeer({
+            initiator: initiator,
+            stream: localStream,
+        });
+        peer.isScreenSharing = false;
+        peer.stream = localStream;
+
+        peer.on('signal', function(data) {
+            console.log(`Sending signal from ${userId} to server`, data);
+            socket.emit('signal', {
+                userId: userId,
+                room_id: "{{room_id}}",
+                signal: data
+            });
+        });
+
+        peer.on('stream', function(remoteStream) {
+
+            console.log("Received stream from", userId);
+            let isScreenShare = peers[userId].isScreenSharing;
+            let videoId = isScreenShare ? `screen_${userId}` : `video_${userId}`;
+            let video = document.getElementById(videoId);
+
+            console.log("Is screen share:", isScreenShare, "; Video ID:", videoId);
+
+            // If there's no existing video element, create one
+            if (!video) {
+                console.log("Creating new video element for user:", userId);
+                video = document.createElement('video');
+                video.setAttribute('id', videoId);
+                video.setAttribute('autoplay', 'true');
+                video.setAttribute('playsinline', ''); // Prevents fullscreen on play in certain browsers
+                video.setAttribute('data-username', userId);
+
+                // Determine if this is a screen share or a webcam video
+                if (isScreenShare) {
+                    video.classList.add('screenShareVideo');// Style screen shares differently
+
+                    // Create a container for the video and button
+                    let videoButtonContainer = document.createElement('div');
+                    videoButtonContainer.style.position = 'relative'; // Relative positioning for the container
+
+                    // Append video to the container
+                    videoButtonContainer.appendChild(video);
+
+                    // Create a maximize button
+                    let maximizeButton = document.createElement('button');
+                    maximizeButton.innerHTML = 'Maximize';
+                    maximizeButton.id = `maximize_${userId}`
+                    maximizeButton.onclick = function() {
+                        if (video.requestFullscreen) {
+                            video.requestFullscreen();
+                        } else if (video.webkitRequestFullscreen) { /* Safari */
+                            video.webkitRequestFullscreen();
+                        } else if (video.msRequestFullscreen) { /* IE11 */
+                            video.msRequestFullscreen();
+                        }
+                    };
+
+                    // Append the maximize button to the container
+                    videoButtonContainer.appendChild(maximizeButton);
+
+                    videoButtonContainer.className = 'video-button-container';
+                    maximizeButton.className = 'btn btn-info';
+
+                    // Append the container to the main video container
+                    let mainVideoContainer = document.getElementById('screenShareContainer'); // Replace with your main video container ID
+                    mainVideoContainer.appendChild(videoButtonContainer);
+                }
+
+                // Append the video element to the appropriate container
+                let container = isScreenShare ? document.getElementById('screenShareContainer') : document.getElementById('videoContainer');
+                container.appendChild(video);
+                
+            }
+
+            // Set the source of the video element to the remote stream
+            console.log("Setting video source for user:", userId);
+            video.srcObject = remoteStream;
+        });
+
+
+        peer.on('error', function(err) {
+            console.error('Peer connection error:', err);
+        });
+
+        return peer;
+    }
+
+            
+            socket.on('user_joined', function(data) {
+                
+                // If the user joining is the current user, initiate the signaling process with other users
+                console.log('User joined', data, socket.id);
+
+                if (data.userId !== socket.id) {
+                    peers[data.userId] = createPeer(data.userId, true);
+                    // Set the maximum number of listeners to avoid warnings
+                    peers[data.userId].setMaxListeners(20);
+                    messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has joined the room.</p>`;
+                } else {
+                    // This part is for existing users to create a new peer connection for the new user
+                    //peers[socket.id] = createPeer(data.username, true);
+                    peers[socket.id] = createPeer(data.userId, true);
+                    // Set the maximum number of listeners to avoid warnings
+                    peers[socket.id].setMaxListeners(20);
+                    //messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has joined the room.</p>`;
+                }
+            });
+
+            socket.on('disconnect', function () {
+
+                const room = "{{room_id}}";
+                socket.emit('leave', {username: userName, room_id: room});
+                messagesDiv.innerHTML += `<p>You left room: ${room}</p>`;
+                location.href = "/";
+
+            });
+
+            socket.on('user_left', function(data) {
+            
+                const userId = data.username;
+
+                // Destroy the peer connection
+                if (peers[userId]) {
+                    peers[userId].destroy();
+                    delete peers[userId];
+                }
+
+                // Remove the video element for this user
+                const videoElem = document.getElementById(`video_${data.userId}`);
+                if (videoElem) {
+                    const parentContainer = videoElem.parentElement;
+
+                    videoElem.remove();
+
+                    // Optionally, force a redraw of the parent container
+                    parentContainer.style.display = 'none';
+                    parentContainer.offsetHeight;
+                    parentContainer.style.display = 'block';
+                }
+                messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has left the room.</p>`;
+            });
+            
+
+            socket.on('signal', function(data) {
+                console.log("Received Signal: ", data);
+                const userId = data.userId;
+
+                // Avoid signaling oneself
+                if (userId === socket.id) {
+                    console.log("Ignoring signal from self");
+                    return;
+                }
+
+                // Check if a peer connection needs to be created
+                // Create a new peer only if it doesn't exist and an offer is received
+                if (!peers[userId] && data.signal.type === 'offer') {
+                    console.log("Creating new peer for offer", userId);
+                    peers[userId] = createPeer(userId, false);
+                }
+
+                /*if (!peers[userId]) {
+                    console.log("Creating new peer for:", userId);
+                    let isInitiator = data.signal.type !== 'offer';
+                    peers[userId] = createPeer(userId, isInitiator);
+                    peers[userId].setMaxListeners(20);
+                }*/
+
+                // Signal the peer if it exists and is not destroyed
+                if (peers[userId] && !peers[userId].destroyed) {
+                    console.log("Signaling peer", userId);
+                    peers[userId].signal(data.signal);
+                } else {
+                    console.log("Attempted to signal a non-existent or destroyed peer:", userId);
+                }
+
+                peers[userId].on('connect', () => {
+                    console.log('Peer connected:', userId);
+                });
+
+                peers[userId].on('icecandidate', (event) => {
+                    console.log('ICE Candidate:', event.candidate);
+                });
+
+                peers[userId].on('track', (event) => {
+                    console.log('Track event:', event);
+                });
+
+                // Additional error handling for peer connection
+                peers[userId].on('error', (err) => {
+                    console.error('Error in peer connection with userId', userId, err);
+                });
+
+                // Handling ICE connection state changes
+                peers[userId].on('iceconnectionstatechange', () => {
+                    console.log('ICE connection state change:', peers[userId].iceConnectionState);
+                });
+            });
+
+
+            function joinRoom() {
+                userName = document.getElementById('meeting_username').value;
+                const room = "{{room_id}}";
+                document.getElementById('joinBtn').innerHTML = "Wait for the approval to join the meeting..."
+                document.getElementById("joinBtn").disabled = true;
+                socket.emit('join', {username: userName, room_id: room});
+            }
+
+            socket.on('user_approved', function(data) {
+                setupMediaStream(data.room_id);
+            });
+
+            function setupMediaStream(room) {
+                navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                }).then(stream => {
+                    localStream = stream;
+                    document.getElementById('localVideo').srcObject = localStream;
+                    document.getElementById('usernameBox').style.display = 'none';
+                    document.getElementById('roomBox').style.display = 'block';
+                    messagesDiv.innerHTML += `<p>You joined room: ${room}</p>`;
+                }).catch(err => {
+                    console.error(err);
+                    document.getElementById('usernameBox').style.display = 'block';
+                    document.getElementById('roomBox').style.display = 'none';
+                    messagesDiv.innerHTML += `<p>is facing error while joining room: ${room}</p>`;
+                });
+            }
+            
+            // approval code
+            socket.on('request_approval', function(data) {
+                console.log("Received approval", data);
+                var approval = window.confirm(`${data.username} wants to join the room. Do you approve?`);
+                socket.emit('approval_response', { 'approved': approval, 'requester_sid': data.requester_sid });
+            });
+
+            socket.on('not_allowed', function(data) {
+                alert(data.message);
+                document.getElementById('joinBtn').innerHTML = "Join"
+                document.getElementById("joinBtn").disabled = false;
+            });
+            
+            document.getElementById('leaveRoom').addEventListener('click', function() {
+                const room = "{{room_id}}";
+                socket.emit('leave', {username: userName, room_id: room});
+                messagesDiv.innerHTML += `<p>You left room: ${room}</p>`;
+                location.href = "/";
+            });
+
+            // Code for toggling video
+            document.getElementById('toggleVideo').addEventListener('click', function() {
+                    if (localStream) {
+                        let videoTracks = localStream.getVideoTracks();
+                        videoEnabled = !videoEnabled;  // Toggle video state
+                        videoTracks.forEach(track => track.enabled = videoEnabled);
+                        this.textContent = videoEnabled ? 'Disable Video' : 'Enable Video';
+                    }
+                });
+
+                // New code for toggling audio
+                document.getElementById('toggleAudio').addEventListener('click', function() {
+                    if (localStream) {
+                        let audioTracks = localStream.getAudioTracks();
+                        audioEnabled = !audioEnabled;  // Toggle audio state
+                        audioTracks.forEach(track => track.enabled = audioEnabled);
+                        this.textContent = audioEnabled ? 'Mute Audio' : 'Unmute Audio';
+                    }
+                });
+                
+        </script>
+
+        <script>
+            const shareScreenBtn = document.getElementById('shareScreenBtn');
+            const stopShareScreenBtn = document.getElementById('stopShareScreenBtn');
+            let screenStream;
+
+            
+            function removeScreenElementByUserId(userId) {
+                const screenElementId = `screen_${userId}`;
+                const screenElement = document.getElementById(screenElementId);
+                if (screenElement) {
+                    screenElement.remove();
+                }
+
+                const maximizeElementId = `maximize_${userId}`;
+                const maximizeElement = document.getElementById(maximizeElementId);
+                if (maximizeElement) {
+                    maximizeElement.remove();
+                }
+            }
+  
+
+    // Later, when you need to share your screen
+    shareScreenBtn.addEventListener('click', async () => {
+    try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        console.log(peers)
+        peers[socket.id].isScreenSharing = true;
+        
+
+        // Add the screen stream to the peer connections for other users
+        for (let userId in peers) {
+            if (peers.hasOwnProperty(userId)) {
+                peers[userId].addStream(screenStream);
+                peers[userId].isScreenSharing = true; // Set the flag when screen sharing starts
+            }
+        }
+
+        // Notify other peers about screen sharing
+        socket.emit('share_screen', { room_id: "{{room_id}}", userId: socket.id, isScreenSharing: true });
+
+         // Instead of replacing the local stream's video track, 
+        // display the screen share in the new div
+        displayScreenShare(screenStream, socket.id);
+
+        // Do the necessary signaling to replace the track for each connection
+        // This part will depend on how SimplePeer is set up in your application
+
+        // Update UI
+        shareScreenBtn.style.display = 'none';
+        stopShareScreenBtn.style.display = 'inline-block';
+    } catch (error) {
+        console.error('Error sharing screen:', error);
+    }
+    });
+
+    // Function to display screen share
+function displayScreenShare(stream, userId) {
+    const screenShareContainer = document.getElementById('screenShareContainer');
+    screenShareContainer.style.width = "100%";
+    screenShareContainer.style.height = "100%";
+
+    const screenShareVideo = document.createElement('video');
+    screenShareVideo.srcObject = stream;
+    screenShareVideo.autoplay = true;
+    screenShareVideo.style.width = "100%";
+    screenShareVideo.style.height = "100%";
+    screenShareVideo.id = `screen_${userId}`;
+    screenShareVideo.classList.add('screenShareVideo'); 
+    screenShareContainer.appendChild(screenShareVideo);
+}
+
+// When a user stops sharing their screen
+stopShareScreenBtn.addEventListener('click', async () => {
+  if (screenStream) {
+    // Stop each track of the screen sharing stream
+    screenStream.getTracks().forEach(track => track.stop());
+    screenStream = null; // Clear the screenStream variable
+
+    socket.emit('share_screen', { room_id: "{{room_id}}", userId: socket.id, isScreenSharing: false });
+
+    // Revert to the webcam video track for each peer connection
+    const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    /*for (let peerId in peers) {
+      if (peers.hasOwnProperty(peerId) && peers[peerId].stream && peers[peerId].isScreenSharing) {
+        let sender = peers[peerId].replaceTrack(
+          peers[peerId].stream.getVideoTracks()[0], // the current screen sharing track
+          newStream.getVideoTracks()[0], // the new webcam video track
+          peers[peerId].stream // the stream where the track will be replaced
+        );
+        peers[peerId].isScreenSharing = false; // Update the flag as screen sharing has stopped
+        removeScreenElementByUserId(peerId) 
+      }
+    }*/
+    removeScreenElementByUserId(socket.id) 
+
+
+    // Update the local video element's stream
+    const localVideo = document.getElementById('localVideo');
+    localVideo.srcObject = newStream;
+
+    // Update the localStream reference
+    localStream = newStream;
+
+    // Emit an event to notify other peers that you've stopped screen sharing
+    socket.emit('stop_share_screen', { room_id: "{{room_id}}", userId: socket.id });
+
+    // Update UI
+    shareScreenBtn.style.display = 'inline-block';
+    stopShareScreenBtn.style.display = 'none';
+  }
+});
+
+socket.on('screen_sharing_status', function(data) {
+    let userId = data.userId;
+    let isScreenSharing = data.isScreenSharing;
+
+    if (peers[userId]) {
+        peers[userId].isScreenSharing = isScreenSharing;
+        // Update UI or handle screen share stream accordingly
+        removeScreenElementByUserId(userId) 
+    }
+});
+
+// Handle the stream update event from other peers
+socket.on('stream_updated', function(data) {
+  if (data.userId !== socket.id) {
+    getNewStreamForUser(data.userId).then(newStream => {
+      let video = document.getElementById(`video_${data.userId}`);
+      if (video) {
+        video.srcObject = newStream;
+      }
+    }).catch(error => {
+      console.error(`Error getting new stream for user ${data.userId}:`, error);
+    });
+  }
+});
+
+
+
+// Function to request a new stream for a user
+async function getNewStreamForUser(userId) {
+  // Emit a signal to the server to request the user's new stream
+  socket.emit('request_user_stream', { userId: userId });
+
+  // Wait for the server to send us the new stream data
+  return new Promise((resolve, reject) => {
+    socket.once('receive_user_stream', function(data) {
+      if (data.userId === userId) {
+        // Process the signal data to obtain the stream
+        const peer = new SimplePeer({
+          initiator: false,
+          trickle: false
+        });
+
+        peer.signal(data.signal);
+
+        peer.on('signal', function(signalData) {
+          socket.emit('return_signal', { signal: signalData, userId: userId });
+        });
+
+        peer.on('stream', function(stream) {
+          resolve(stream);
+        });
+      } else {
+        reject(new Error('Received stream for incorrect user'));
+      }
+    });
+
+    // Set a timeout to reject the promise if it takes too long
+    setTimeout(() => {
+      reject(new Error('Timeout waiting for new stream'));
+    }, 15000); // 15-second timeout
+  });
+}
+
+// Handling the return signal from the other user
+socket.on('user_return_signal', function(data) {
+  if (peers[data.userId]) {
+    peers[data.userId].signal(data.signal);
+  }
+});
+
+
+socket.on('provide_user_stream', function(data) {
+  const peer = new SimplePeer({
+    initiator: true,
+    stream: localStream, // Assuming localStream is the current user's stream
+    trickle: false
+  });
+
+  peer.on('signal', function(signalData) {
+    socket.emit('return_signal', { signal: signalData, userId: data.fromId });
+  });
+
+  // When the other user sends their signal data back
+  socket.on('user_return_signal', function(data) {
+    peer.signal(data.signal);
+  });
+});
+
+//chat message handling
+function postMessage() {
+    const messageInput = document.getElementById('messageInput');
+    const message = messageInput.value;
+
+    console.log(`Message Sending by: ${userName}, message: ${message}`);
+
+    if (message.trim() !== '') {
+        const messagesDiv = document.getElementById('messages');
+        messagesDiv.innerHTML += `<p><strong>${userName}:</strong> ${message}</p>`;
+
+        socket.emit('new_message', { message: message, username: userName, room_id: "{{room_id}}" });
+
+        // Clear the input field after sending the message
+        messageInput.value = '';
+    }
+}
+
+function handleKeyPress(event) {
+    // Check if the key pressed is 'Enter' without 'Shift'
+    if (event.key === "Enter" && !event.shiftKey) {
+        // Prevent the default action to avoid line breaks in input or form submission
+        event.preventDefault();
+
+        // Call the postMessage function
+        postMessage();
+    }
+}
+
+function scrollToBottom() {
+    const messagesDiv = document.getElementById('messages');
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+socket.on('message_received', function(data) {
+    console.log(data)
+    const messagesDiv = document.getElementById('messages');
+    messagesDiv.innerHTML += `<p><strong>${data.username}:</strong> ${data.message}</p>`;
+    scrollToBottom();
+});
+
+  </script>
+  
+
+</body>
+</html>

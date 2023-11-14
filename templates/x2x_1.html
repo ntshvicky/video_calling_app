@@ -32,6 +32,7 @@
                 <div class="container mt-3">
                     <h2>Join a Meeting</h2>
                     <p>Enter your existing meeting link:</p>
+                    <p>If You are creator of meeting, use this username you use to create meeting:</p>
                     <div class="form-floating mb-3 mt-3">
                         <input type="text" class="form-control" id="meeting_link" placeholder="Enter meeting ID" name="meeting_link">
                         <label for="meeting_link">Meeting ID</label>
@@ -72,11 +73,10 @@
     function joinRoom() {
         let meeting_link = document.getElementById('meeting_link').value;
         if(meeting_link.length > 0) {
-            location.href = url + `/room_join/${meeting_link}`;
-            window.open(
-                url + `/room_join/${meeting_link}`,
-                '_blank'
-            );
+            location.href = `${url}/room_join/${meeting_link}`;
+            /*window.open(
+                url + `/room_join/${meeting_link}`
+            );*/
         }
     }
 
@@ -96,7 +96,7 @@
             success: function(response) {
                 console.log('AJAX response:', response);
                 if(response['success'] == true) {
-                    messagesDiv.innerHTML = `<p><a href='${url}/room_join/${response.room_id}' target='_blank'>${url}/room_join/${response.room_id}</a></p>`; 
+                    messagesDiv.innerHTML = `<p><a href='${url}/room_join/${response.room_id}'>${url}/room_join/${response.room_id}</a></p>`; 
                 } else {
                     messagesDiv.innerHTML = `<p>Error creating meeting link.</p>`;
                 }
