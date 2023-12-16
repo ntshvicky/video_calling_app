@@ -1,4 +1,4 @@
-# This is an example of basic video calling app like google meet using Python, Flask, Socket IO and HTML (jinja2).
+# This is an example of basic video calling app like google meet using Python, Flask, Socket IO and HTML (jinja2). and generate AI summary of transcript
 
 ## There is 2 kind of project
 1. Peer-2-Peer / One-2-One person meeting.
