@@ -3,3 +3,7 @@ flask-socketio
 eventlet
 gevent
 gevent-websocket
+Flask-SQLAlchemy
+langchain
+sentence_transformers
+python-dotenv

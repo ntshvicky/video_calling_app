@@ -3,6 +3,12 @@ from flask import Flask, redirect, render_template, request, jsonify
 from flask_socketio import SocketIO, join_room, leave_room
 import uuid
 
+import os
+from langchain import LLMChain, PromptTemplate
+from langchain.llms import DeepInfra
+from langchain.memory import ConversationBufferWindowMemory
+
+
 app = Flask(__name__)
 socketio = SocketIO(app, 
                     cors_allowed_origins="*",
@@ -10,6 +16,31 @@ socketio = SocketIO(app,
                     )
 
 rooms = {}  # For simplicity, store rooms in-memory
+
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DEEPINFRA_API_TOKEN = os.getenv('DEEPINFRA_API_TOKEN')
+
+@app.route('/summarize', methods=['POST'])
+def generate_summary():
+    try:
+        text_chunk = request.json['transcript']
+        # Defining the template to generate summary
+        template = """
+        Write a concise summary of the text, return your responses with 5 lines that cover the key points of the text.
+        ```{text}```
+        SUMMARY:
+        """
+        prompt = PromptTemplate(template=template, input_variables=["text"])
+        llm_chain = LLMChain(prompt=prompt, llm=DeepInfra(model_id="meta-llama/Llama-2-70b-chat-hf"),)
+
+        summary = llm_chain.run(text_chunk)
+        return jsonify(summary=summary)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 
 @app.route('/create_room', methods=['POST'])
@@ -102,6 +133,13 @@ def on_request_new_stream(data):
     # Inform the target user to create a new offer for their stream
     socketio.emit('create_new_offer', {'fromUserId': request.sid}, room=target_user)
 
+@socketio.on('transcript_message')
+def handle_transcript_message(data):
+    username = data['username']
+    transcript = data['transcript']
+    room_id = data['room_id']
+    socketio.emit('broadcast_transcript', {'username': username, 'transcript': transcript}, room=room_id)
+
 
 @socketio.on('new_message')
 def handle_new_message(data):
@@ -124,4 +162,4 @@ def index():
     return render_template('x2x_1.html')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)

@@ -66,3 +66,7 @@ find . | grep -E "(__pycache__|\.pyc|\.pyo$)" | xargs rm -rf
 git add .
 git commit -m "okay"
 git push origin master
+
+# better working
+x2x.py with x2x_1.html & x2x_2.html is working fine
+Funcationality - videochat, share screen, text chat, transcript chat and lastly based on this transcript, user can generate summary also using ai model (i used Llama for example). save DEEPINFRA_API_TOKEN in .env

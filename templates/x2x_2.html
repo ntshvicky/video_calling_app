@@ -102,23 +102,39 @@
 
             <hr/>
             <div class="form-group row text-center" id="roomBox">
-                <div class="col-sm-6" style="border: solid 2px #000;">
-                    <div id="videoContainer">
-                        <video id="localVideo" autoplay muted></video>
+                <div class="row">
+                    <div class="col-sm-6" style="border: solid 2px #000;">
+                        <div id="videoContainer">
+                            <video id="localVideo" autoplay muted></video>
+                        </div>
+                    </div>
+                    <div class="col-sm-4" style="border: solid 2px #000;">
+                        <div id="screenShareContainer"></div>
+                    </div>
+                    <div class="col-sm-2" style="border: solid 2px #000;">
+                        <div id="messages"></div>
+                        <input type="text" id="messageInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
+                            <button onclick="postMessage()">Send</button>
                     </div>
                 </div>
-                <div class="col-sm-4" style="border: solid 2px #000;">
-                    <div id="screenShareContainer"></div>
+                <div class="form-group row text-center" style="margin-top: 4px;">
+                    <div class="col-sm-2">
+                        <button onclick="startSpeechRecognition()" id="startSpeechRecognition" class="btn btn-primary">Start Transcription</button>
+                        <button onclick="stopSpeechRecognition()" id="stopSpeechRecognition"  class="btn btn-danger" style="display: none;">Stop Transcription</button>
+                    </div>
+                    <div class="col-sm-8">
+                        <div id="interimTranscript" style="color: gray;"></div>
+                        <div id="transcript" style="height: 100px; overflow-y: auto; margin-top: 3px;"></div>
+                    </div>
+                    <div class="col-sm-2">
+                        <button onclick="summarizeMeeting()" id="generate_summary" class="btn btn-primary">Summary of whole talk</button>
+                        <div id="summary"></div>
+                    </div>
                 </div>
-                <div class="col-sm-2" style="border: solid 2px #000;">
-                    <div id="messages"></div>
-                    <input type="text" id="messageInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
-                        <button onclick="postMessage()">Send</button>
-                </div>
+                
             </div>
         </div>
     </div>
-    
 </div>
 
 <script>
@@ -568,8 +584,8 @@ function handleKeyPress(event) {
 }
 
 
-function scrollToBottom() {
-    const messagesDiv = document.getElementById('messages');
+function scrollToBottom(divname) {
+    const messagesDiv = document.getElementById(divname);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
@@ -577,8 +593,114 @@ function scrollToBottom() {
 socket.on('message_received', function(data) {
     const messagesDiv = document.getElementById('messages');
     messagesDiv.innerHTML += `<p><strong>${data.username}:</strong> ${data.message}</p>`;
-    scrollToBottom();
+    scrollToBottom('messages');
 });
+
+
+var recognition;
+
+function startSpeechRecognition() {
+    // Check if the browser supports the Web Speech API
+    if (!('webkitSpeechRecognition' in window)) {
+      alert("Your browser does not support speech recognition. Please try Google Chrome.");
+      return;
+    }
+    
+    recognition = new webkitSpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;  // Enable interim results
+    recognition.lang = 'en-US';
+
+    recognition.onresult = function(event) {
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        // Iterate through results
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+            } else {
+                interimTranscript += event.results[i][0].transcript;
+            }
+        }
+
+        // Update the UI with interim and final results
+        document.getElementById('interimTranscript').textContent = interimTranscript;
+
+        // Send final transcript to the backend for broadcasting
+        if (finalTranscript.trim().length > 0) {
+            socket.emit('transcript_message', {
+                username: userName,
+                transcript: finalTranscript.trim(),
+                room_id: "{{room_id}}"
+            });
+        }
+    };
+
+        // Add error handling for speech recognition
+        recognition.onerror = function(event) {
+            console.error('Speech Recognition Error:', event.error);
+            // Optionally, restart recognition here as well
+            recognition.start();
+        };
+
+    // Restart recognition when it ends
+    recognition.onend = function() {
+      console.log("Speech recognition ended, restarting...");
+      recognition.start();
+    };
+
+    // Start the speech recognition
+    recognition.start();
+    console.log("Speech recognition started");
+    document.getElementById("startSpeechRecognition").style.display = "none";
+    document.getElementById("stopSpeechRecognition").style.display = "block";
+}
+
+function stopSpeechRecognition() {
+    if (recognition) {
+        recognition.stop();
+        recognition.onend = null; // Remove the onend handler
+        recognition = null;
+        console.log("Speech recognition stopped");
+
+        document.getElementById("startSpeechRecognition").style.display = "block";
+        document.getElementById("stopSpeechRecognition").style.display = "none";
+    }
+}
+
+socket.on('broadcast_transcript', function(data) {
+    // Displaying the transcript in the 'transcript' div
+    console.log('Broadcasting', data);
+    document.getElementById('transcript').innerHTML += `<p><strong>${data.username}:</strong> ${data.transcript}</p>`;
+    scrollToBottom('transcript');
+    if(!recognition)
+        recognition.start();
+});
+
+
+function summarizeMeeting() {
+    let transcript = document.getElementById('transcript').textContent;
+    console.log(transcript);
+
+    document.getElementById('summary').innerHTML = "Result is loading ...";
+
+    fetch('/summarize', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ transcript: transcript })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Summary:', data.summary);
+        document.getElementById('summary').innerHTML = data.summary;
+    })
+    .catch(error => {
+        document.getElementById('summary').innerHTML = 'Error:', error;
+    })
+}
 
   </script>
   

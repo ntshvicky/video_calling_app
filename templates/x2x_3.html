@@ -105,6 +105,7 @@
                     <div class="col-sm-6" style="border: solid 2px #000;">
                         <div id="videoContainer">
                             <video id="localVideo" autoplay muted></video>
+                            <label id="localUsername"></label>
                         </div>
                     </div>
                     <div class="col-sm-4" style="border: solid 2px #000;">
@@ -137,13 +138,14 @@
     document.getElementById('usernameBox').style.display = 'block';
     document.getElementById('roomBox').style.display = 'none';
 
-    function createPeer(userId, initiator) {
+    function createPeer(userId, user_name, initiator) {
         const peer = new SimplePeer({
             initiator: initiator,
             stream: localStream,
         });
         peer.isScreenSharing = false;
         peer.stream = localStream;
+        peer.setMaxListeners(20); // Set the desired limit
 
         peer.on('signal', function(data) {
             console.log(`Sending signal from ${userId} to server`, data);
@@ -171,6 +173,7 @@
                 video.setAttribute('autoplay', 'true');
                 video.setAttribute('playsinline', ''); // Prevents fullscreen on play in certain browsers
                 video.setAttribute('data-username', userId);
+
 
                 // Determine if this is a screen share or a webcam video
                 if (isScreenShare) {
@@ -208,9 +211,19 @@
                     mainVideoContainer.appendChild(videoButtonContainer);
                 }
 
+
+                let labelDiv = document.createElement('label');
+                labelDiv.textContent = user_name
+
+                // Create wrapper div for video and label
+                var wrapperDiv = document.createElement('div');
+                wrapperDiv.style.display = 'block'; // Set display to block
+                wrapperDiv.appendChild(video);
+                wrapperDiv.appendChild(labelDiv);
+
                 // Append the video element to the appropriate container
                 let container = isScreenShare ? document.getElementById('screenShareContainer') : document.getElementById('videoContainer');
-                container.appendChild(video);
+                container.appendChild(wrapperDiv);
                 
             }
 
@@ -236,14 +249,14 @@
                 if (data.userId !== socket.id) {
                     peers[data.userId] = createPeer(data.userId, true);
                     // Set the maximum number of listeners to avoid warnings
-                    peers[data.userId].setMaxListeners(20);
+                    //peers[data.userId].setMaxListeners(20);
                     messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has joined the room.</p>`;
                 } else {
                     // This part is for existing users to create a new peer connection for the new user
                     //peers[socket.id] = createPeer(data.username, true);
                     peers[socket.id] = createPeer(data.userId, true);
                     // Set the maximum number of listeners to avoid warnings
-                    peers[socket.id].setMaxListeners(20);
+                    //peers[socket.id].setMaxListeners(20);
                     //messagesDiv.innerHTML += `<p><strong>${data.username}</strong> has joined the room.</p>`;
                 }
             });
@@ -358,6 +371,7 @@
                 }).then(stream => {
                     localStream = stream;
                     document.getElementById('localVideo').srcObject = localStream;
+                    document.getElementById('localUsername').textContent = userName;
                     document.getElementById('usernameBox').style.display = 'none';
                     document.getElementById('roomBox').style.display = 'block';
                     messagesDiv.innerHTML += `<p>You joined room: ${room}</p>`;
